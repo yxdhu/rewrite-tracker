@@ -1,0 +1,31 @@
+// Web-app (GitHub Pages build) test: install pieces, offline start, browser download. Needs `python3 -m http.server 8765 --directory docs`.
+import { createRequire } from "node:module"; const require = createRequire(import.meta.url);
+const { chromium } = require("/opt/npm-tools/node_modules/playwright");
+const b = await chromium.launch({ executablePath: "/usr/bin/google-chrome", args: ["--no-sandbox"] });
+const ctx = await b.newContext({ acceptDownloads: true });
+await ctx.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
+const p = await ctx.newPage(); p.setDefaultTimeout(5000);
+const errs = []; p.on("pageerror", e => errs.push(e.message));
+let ok = 0, bad = 0; const t = (c, m) => { if (c) { ok++; console.log("PASS", m); } else { bad++; console.log("FAIL", m); } };
+await p.goto("http://localhost:8765/"); await p.waitForSelector("#view h1");
+const man = await (await p.request.get("http://localhost:8765/manifest.webmanifest")).json();
+t(man.icons.length === 3 && man.display === "standalone", "manifest valid");
+for (const ic of man.icons) t((await p.request.get("http://localhost:8765/" + ic.src)).ok(), "icon " + ic.src);
+await p.waitForFunction(() => navigator.serviceWorker.controller || navigator.serviceWorker.ready.then(() => true), null, { timeout: 8000 });
+await p.reload(); await p.waitForSelector("#view h1");
+t(await p.evaluate(() => !!navigator.serviceWorker.controller), "service worker controls page");
+// log a journal note, then go offline and reload
+await p.click(".sidebar [data-route=journal]"); await p.click("button:has-text('New entry')");
+await p.fill(".modal input.input >> nth=0", "Offline web app note"); await p.click(".modal >> text=Save");
+await ctx.setOffline(true);
+await p.reload(); await p.waitForSelector("#view h1");
+await p.click(".sidebar [data-route=journal]");
+t(/Offline web app note/.test(await p.locator("#view").innerText()), "opens offline with data");
+await ctx.setOffline(false);
+await p.click(".sidebar [data-route=prefs]");
+const [dl] = await Promise.all([p.waitForEvent("download"), p.click("button:has-text('Download JSON')")]);
+t(/rewrite-tracker-.*\.json/.test(dl.suggestedFilename()), "browser download " + dl.suggestedFilename());
+await p.click(".sidebar [data-route=insights]");
+t(/claude\.ai version/.test(await p.locator("#view").innerText()), "coach explains where it runs");
+t(errs.length === 0, "no page errors " + errs.join("|"));
+await b.close(); console.log(`\n${ok} passed, ${bad} failed`); process.exit(bad ? 1 : 0);

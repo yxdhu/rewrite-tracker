@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rewrite Tracker</title>
+<style>
+:root{--bg:#0f1115;--card:#181b22;--card2:#1f232c;--line:#2a2f3a;--text:#e8eaf0;--mut:#8b93a7;--acc:#7c9cff;--before:#f59e0b;--after:#4ade80;--bad:#f87171}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-text-size-adjust:100%}
+.wrap{max-width:720px;margin:0 auto;padding:16px 14px 90px}
+h1{font-size:20px;margin:6px 0 2px}
+h2{font-size:16px;margin:0 0 8px}
+.sub{color:var(--mut);font-size:13px;margin:0 0 14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:0 0 12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center}
+.stat b{display:block;font-size:22px}
+.stat span{color:var(--mut);font-size:12px}
+nav{position:fixed;left:0;right:0;bottom:0;background:#12151bf2;border-top:1px solid var(--line);display:flex;justify-content:center;gap:2px;padding:6px 6px calc(6px + env(safe-area-inset-bottom));backdrop-filter:blur(8px);z-index:5}
+nav button{flex:1;max-width:130px;background:none;border:0;color:var(--mut);padding:8px 2px;border-radius:10px;font:inherit;font-size:12px;cursor:pointer}
+nav button.on{color:var(--text);background:var(--card2)}
+nav button i{display:block;font-style:normal;font-size:18px}
+.chip{border:1px solid var(--line);background:var(--card2);color:var(--text);border-radius:999px;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer}
+.chip.on{border-color:var(--acc);background:#243055}
+.box{background:var(--card2);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:13.5px}
+.box small{display:block;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;font-size:11px;margin-bottom:2px}
+label.l{display:block;font-size:13px;color:var(--mut);margin:12px 0 4px}
+input[type=text],textarea{width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font:inherit}
+textarea{min-height:64px;resize:vertical}
+input[type=range]{width:100%;accent-color:var(--acc)}
+.sl{display:flex;align-items:center;gap:12px}
+.num{font-size:24px;min-width:30px;text-align:center}
+.btn{background:var(--acc);color:#0b1020;border:0;border-radius:10px;padding:11px 16px;font:inherit;font-weight:600;cursor:pointer}
+.btn.ghost{background:var(--card2);color:var(--text);border:1px solid var(--line);font-weight:500}
+.btn.danger{background:#3a1d22;color:var(--bad);border:1px solid #5a2a31}
+.btn.sm{padding:6px 10px;font-size:12px}
+.mut{color:var(--mut)}
+.sm{font-size:12px}
+.pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;background:var(--card2);border:1px solid var(--line)}
+.cd{font-variant-numeric:tabular-nums}
+.warn{color:var(--before)}
+.good{color:var(--after)}
+.hist{display:flex;gap:10px;align-items:flex-start}
+.hist .e{font-size:22px}
+.grow{flex:1;min-width:0}
+details{border:1px solid var(--line);border-radius:12px;margin:0 0 8px;background:var(--card)}
+summary{padding:12px;cursor:pointer}
+details>div{padding:0 12px 12px}
+.toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:#243055;border:1px solid var(--acc);padding:10px 14px;border-radius:12px;z-index:9;max-width:90%;font-size:14px}
+svg text{fill:var(--mut);font-size:10px}
+.legend span{margin-right:12px;font-size:12px;color:var(--mut)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px}
+ol,ul{padding-left:20px;margin:6px 0}
+li{margin:3px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Rewrite Tracker</h1>
+  <p class="sub" id="sync">Rate before. Act differently. Rate after. The gap is the learning.</p>
+  <div id="view"></div>
+</div>
+<nav id="nav"></nav>
+<script>
+"use strict";
+const WINDOW_MS = 5*3600*1000;
+const DEFAULT_PROBLEMS = [
+  {id:"smoking",name:"Quit smoking",emoji:"🚬",old:"A cigarette = relief and calm.",action:"Do not smoke. Let the craving rise and fall (10–15 min). Re-rate it."},
+  {id:"procrastination",name:"Procrastination",emoji:"⏳",old:"Starting = misery. Avoiding = relief.",action:"Work on the task for just 5 minutes. No phone reward afterwards. Re-rate."},
+  {id:"gym",name:"Gym",emoji:"🏋️",old:"Gym = effort and awkwardness, not worth it.",action:"Go and promise yourself only 10 minutes. Re-rate your mood after."},
+  {id:"relationship",name:"Relationship",emoji:"💬",old:"Trigger moment = I get defensive or shut down.",action:"Replay the scene with a calm ending, then try a calm 5-minute real talk. Note what the other person actually did."},
+  {id:"job",name:"Job / Ausbildung search",emoji:"📄",old:"Applying = rejection and shame.",action:"Do one small step: edit one CV line, or send one application or message. Re-rate."},
+  {id:"business",name:"Side business",emoji:"🛍️",old:"Working on the shop = pointless, nobody will buy.",action:"Do one 15-minute task for the store (one design, one listing). Re-rate."},
+  {id:"money",name:"Saving money",emoji:"💶",old:"Not buying = missing out. Spending = relief.",action:"Wait 24 hours before buying, or move a small amount to savings. Re-rate the urge."},
+  {id:"habits",name:"Daily habits",emoji:"🌱",old:"Reading, cleaning, skincare = a boring chore.",action:"Do the habit now (read 10 min / clean 5 min / skincare). Re-rate how it felt."}
+];
+
+let state = {v:1, updatedAt:0, problems:JSON.parse(JSON.stringify(DEFAULT_PROBLEMS)), sessions:[]};
+let tab = "today";
+let draft = {problem:null, trigger:"", before:5, predicted:5};
+let fin = {};          // per-session finish drafts
+let progFilter = "all";
+let confirmId = null;
+
+/* ---------- helpers ---------- */
+function h(tag, attrs, ...kids){
+  const e = document.createElement(tag);
+  for (const k in (attrs||{})){
+    const v = attrs[k];
+    if (k==="class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (k==="value") e.value = v;
+    else if (v===true) e.setAttribute(k,"");
+    else if (v!==false && v!=null) e.setAttribute(k,v);
+  }
+  for (const c of kids.flat(Infinity)){
+    if (c==null || c===false) continue;
+    e.append(c.nodeType ? c : document.createTextNode(String(c)));
+  }
+  return e;
+}
+const NS = "http://www.w3.org/2000/svg";
+function s(tag, attrs, ...kids){
+  const e = document.createElementNS(NS, tag);
+  for (const k in (attrs||{})) e.setAttribute(k, attrs[k]);
+  for (const c of kids.flat()) if (c!=null) e.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return e;
+}
+const uid = () => Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4);
+const pById = id => state.problems.find(p=>p.id===id);
+const done = () => state.sessions.filter(x=>x.after!=null).sort((a,b)=>a.doneAt-b.doneAt);
+const avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : null;
+const f1 = n => n==null ? "–" : (Math.round(n*10)/10).toString();
+function dayKey(t){const d=new Date(t);return d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate();}
+function fmtDate(t){return new Date(t).toLocaleString([], {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});}
+function fmtLeft(ms){
+  if (ms<=0) return "window closed";
+  const m = Math.floor(ms/60000), hh = Math.floor(m/60);
+  return "closes in "+hh+"h "+String(m%60).padStart(2,"0")+"m";
+}
+function toast(msg){
+  const old = document.querySelector(".toast"); if (old) old.remove();
+  const t = h("div",{class:"toast"},msg); document.body.append(t);
+  setTimeout(()=>t.remove(), 5200);
+}
+function streak(){
+  const days = new Set(done().map(x=>dayKey(x.doneAt)));
+  let d = new Date(), n = 0;
+  if (!days.has(dayKey(d))) d.setDate(d.getDate()-1);
+  while (days.has(dayKey(d))){ n++; d.setDate(d.getDate()-1); }
+  return n;
+}
+
+/* ---------- persistence: localStorage + private db when available ---------- */
+let ref = null, saveTimer = null;
+function setSync(t){ document.getElementById("sync").textContent = t; }
+function save(){
+  state.updatedAt = Date.now();
+  try{ localStorage.setItem("rewrite_tracker_state", JSON.stringify(state)); }catch(e){}
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async ()=>{
+    if (!ref) return;
+    try{ await ref.set({json: JSON.stringify(state), updatedAt: state.updatedAt}); }catch(e){}
+  }, 700);
+}
+async function initStore(){
+  try{ const raw = localStorage.getItem("rewrite_tracker_state"); if (raw) state = Object.assign(state, JSON.parse(raw)); }catch(e){}
+  render();
+  try{
+    if (typeof claude === "undefined") return;
+    const [db, user] = await Promise.all([claude.use("db"), claude.use("user")]);
+    if (!db || !user) return;
+    const id = await user.id();
+    ref = db.collection("data/users/"+id).doc("state");
+    const snap = await Promise.race([ref.get(), new Promise((_,r)=>setTimeout(()=>r(new Error("t")),10000))]);
+    const exists = snap && (typeof snap.exists==="function" ? snap.exists() : snap.exists!==false);
+    const d = exists ? (typeof snap.data==="function" ? snap.data() : snap) : null;
+    if (d && d.json){
+      const remote = JSON.parse(d.json);
+      if ((remote.updatedAt||0) > (state.updatedAt||0)){ state = Object.assign(state, remote); render(); }
+      else if ((remote.updatedAt||0) < (state.updatedAt||0)) { await ref.set({json: JSON.stringify(state), updatedAt: state.updatedAt}); }
+    } else if (state.sessions.length){ await ref.set({json: JSON.stringify(state), updatedAt: state.updatedAt}); }
+  }catch(e){}
+}
+
+/* ---------- components ---------- */
+function slider(label, hint, get, set, color){
+  const out = h("b",{class:"num",style:"color:"+(color||"var(--text)")}, get());
+  const inp = h("input",{type:"range",min:0,max:10,step:1,value:get(),oninput:e=>{ set(+e.target.value); out.textContent = e.target.value; }});
+  return h("div",{}, h("label",{class:"l"}, label), hint?h("div",{class:"mut sm"},hint):null, h("div",{class:"sl"}, inp, out));
+}
+
+/* ---------- TODAY ---------- */
+function viewToday(){
+  const root = h("div");
+  const open = state.sessions.filter(x=>x.after==null).sort((a,b)=>a.startedAt-b.startedAt);
+  const todayN = done().filter(x=>dayKey(x.doneAt)===dayKey(Date.now())).length;
+  root.append(h("div",{class:"stats"},
+    h("div",{class:"stat"},h("b",{},streak()),h("span",{},"day streak")),
+    h("div",{class:"stat"},h("b",{},todayN),h("span",{},"done today")),
+    h("div",{class:"stat"},h("b",{},open.length),h("span",{},"windows open"))
+  ));
+
+  open.forEach(se=>{
+    const p = pById(se.problem) || {name:"(deleted)",emoji:"•",action:""};
+    const fd = fin[se.id] = fin[se.id] || {after:5, held:null, note:""};
+    const left = WINDOW_MS - (Date.now()-se.startedAt);
+    const holdBtns = [["yes","Yes"],["partly","Partly"],["no","No"]].map(([k,t])=>
+      h("button",{class:"chip"+(fd.held===k?" on":""),onclick:()=>{fd.held=k;render();}},t));
+    root.append(h("div",{class:"card",style:"border-color:var(--before)"},
+      h("div",{class:"row",style:"justify-content:space-between"},
+        h("h2",{},p.emoji+" "+p.name),
+        h("span",{class:"pill cd "+(left>0?"warn":"mut"),"data-start":se.startedAt}, fmtLeft(left))),
+      se.trigger?h("div",{class:"mut sm"},"Trigger: "+se.trigger):null,
+      h("div",{class:"box"},h("small",{},"Do this now"),p.action),
+      h("div",{class:"mut sm"},"Before: "+se.before+"/10 · You predicted: "+se.predicted+"/10"),
+      slider("After: how strong was it really? (0–10)","Rate the peak you actually felt.",()=>fd.after,v=>fd.after=v,"var(--after)"),
+      h("label",{class:"l"},"Did you do the new action / hold the line?"),
+      h("div",{class:"row"},holdBtns),
+      h("label",{class:"l"},"What actually happened vs. what you expected?"),
+      h("textarea",{oninput:e=>fd.note=e.target.value,placeholder:"One or two sentences…",value:fd.note}),
+      h("div",{class:"row",style:"margin-top:12px"},
+        h("button",{class:"btn",onclick:()=>finish(se)},"Save result"),
+        h("button",{class:"btn ghost",onclick:()=>{ if(confirmId===se.id){state.sessions=state.sessions.filter(x=>x.id!==se.id);confirmId=null;save();render();}else{confirmId=se.id;render();} }}, confirmId===se.id?"Really discard?":"Discard"))
+    ));
+  });
+
+  // new session
+  const p = draft.problem ? pById(draft.problem) : null;
+  const chips = state.problems.map(x=>h("button",{class:"chip"+(draft.problem===x.id?" on":""),onclick:()=>{draft.problem=x.id;render();}},x.emoji+" "+x.name));
+  const card = h("div",{class:"card"}, h("h2",{},"New round"),
+    h("div",{class:"mut sm",style:"margin-bottom:8px"},"Step 1: trigger the old reaction on purpose, rate it, then do the new thing within 5 hours."),
+    h("div",{class:"row"},chips));
+  if (p){
+    card.append(
+      h("div",{class:"box"},h("small",{},"Old prediction"),p.old),
+      h("div",{class:"box"},h("small",{},"New experience to try"),p.action),
+      h("label",{class:"l"},"What triggered it just now? (optional)"),
+      h("input",{type:"text",placeholder:"e.g. coffee break, opened my laptop, her tone…",oninput:e=>draft.trigger=e.target.value,value:draft.trigger}),
+      slider("BEFORE: how strong is the urge / feeling right now? (0–10)",null,()=>draft.before,v=>draft.before=v,"var(--before)"),
+      slider("PREDICTION: how bad will it get if you do the new action? (0–10)","Write your honest gut guess first.",()=>draft.predicted,v=>draft.predicted=v,"var(--acc)"),
+      h("div",{style:"margin-top:14px"},h("button",{class:"btn",onclick:startSession},"Start window (5 h)"))
+    );
+  } else card.append(h("p",{class:"mut"},"Pick a problem to start."));
+  root.append(card);
+  root.append(h("p",{class:"mut sm"},"Tonight: sleep on it and don't re-trigger the old pattern. Sleep helps lock in new learning."));
+  return root;
+}
+function startSession(){
+  state.sessions.push({id:uid(),problem:draft.problem,trigger:draft.trigger.trim(),before:draft.before,predicted:draft.predicted,after:null,held:null,note:"",startedAt:Date.now(),doneAt:null});
+  draft.trigger = ""; save(); render(); toast("Window open. Do the new action now, then come back to rate it.");
+}
+function finish(se){
+  const fd = fin[se.id];
+  se.after = fd.after; se.held = fd.held; se.note = fd.note.trim(); se.doneAt = Date.now();
+  se.inWindow = (se.doneAt - se.startedAt) <= WINDOW_MS;
+  delete fin[se.id]; save(); render();
+  const gap = se.predicted - se.after;
+  toast(gap>0 ? "You predicted "+se.predicted+", it was "+se.after+". Gap "+gap+": that's the update."
+    : gap===0 ? "Prediction matched ("+se.after+"). Keep repeating, the update comes over rounds."
+    : "It was harder than predicted ("+se.after+" vs "+se.predicted+"). That's useful data too.");
+}
+
+/* ---------- PROGRESS ---------- */
+function chart(list){
+  const W=320,H=140,L=24,R=8,T=8,B=20;
+  const svg = s("svg",{viewBox:"0 0 "+W+" "+H,width:"100%",role:"img","aria-label":"Before and after ratings over time"});
+  for (let y=0;y<=10;y+=5){
+    const py = T+(H-T-B)*(1-y/10);
+    svg.append(s("line",{x1:L,x2:W-R,y1:py,y2:py,stroke:"#2a2f3a"}), s("text",{x:2,y:py+3},y));
+  }
+  const n = list.length, px = i => n===1 ? (L+W-R)/2 : L+(W-L-R)*i/(n-1), py = v => T+(H-T-B)*(1-v/10);
+  const line = (key,color,dash)=>{
+    svg.append(s("polyline",{fill:"none",stroke:color,"stroke-width":2,"stroke-dasharray":dash||"",points:list.map((x,i)=>px(i)+","+py(x[key])).join(" ")}));
+    list.forEach((x,i)=>svg.append(s("circle",{cx:px(i),cy:py(x[key]),r:3,fill:color})));
+  };
+  line("before","#f59e0b","5 4"); line("after","#4ade80");
+  svg.append(s("text",{x:L,y:H-4},"oldest"), s("text",{x:W-R-28,y:H-4},"latest"));
+  return svg;
+}
+function insight(list){
+  if (list.length<3) return "Log at least 3 rounds to see a trend.";
+  const k = Math.min(3,Math.floor(list.length/2));
+  const first = avg(list.slice(0,k).map(x=>x.before)), last = avg(list.slice(-k).map(x=>x.before));
+  const d = first-last;
+  if (d>=1.5) return "Your starting reaction dropped from "+f1(first)+" to "+f1(last)+". That's the lasting change you want.";
+  if (d<=-1.5) return "Your starting reaction is rising ("+f1(first)+" to "+f1(last)+"). Check stress, sleep, or whether the action is too hard.";
+  return "Starting reaction is steady ("+f1(first)+" to "+f1(last)+"). Keep repeating; this usually takes weeks.";
+}
+function viewProgress(){
+  const root = h("div");
+  const chips = [["all","All"]].concat(state.problems.map(p=>[p.id,p.emoji+" "+p.name])).map(([id,t])=>h("button",{class:"chip"+(progFilter===id?" on":""),onclick:()=>{progFilter=id;render();}},t));
+  root.append(h("div",{class:"row",style:"margin-bottom:12px"},chips));
+  const all = done();
+  const targets = progFilter==="all" ? state.problems.filter(p=>all.some(x=>x.problem===p.id)) : [pById(progFilter)].filter(Boolean);
+  if (!all.length) { root.append(h("div",{class:"card"},"No completed rounds yet. Start one on the Today tab.")); return root; }
+  if (progFilter==="all"){
+    const e = avg(all.map(x=>x.predicted-x.after)), r = avg(all.map(x=>x.before-x.after));
+    root.append(h("div",{class:"stats"},
+      h("div",{class:"stat"},h("b",{},all.length),h("span",{},"rounds")),
+      h("div",{class:"stat"},h("b",{},f1(r)),h("span",{},"avg drop in round")),
+      h("div",{class:"stat"},h("b",{},f1(e)),h("span",{},"avg prediction gap"))));
+  }
+  targets.forEach(p=>{
+    const list = all.filter(x=>x.problem===p.id);
+    if (!list.length){ root.append(h("div",{class:"card"},h("h2",{},p.emoji+" "+p.name),h("div",{class:"mut"},"No completed rounds yet."))); return; }
+    const held = list.filter(x=>x.held==="yes").length;
+    root.append(h("div",{class:"card"},
+      h("h2",{},p.emoji+" "+p.name+" ",h("span",{class:"pill"},list.length+" rounds")),
+      chart(list),
+      h("div",{class:"legend"},h("span",{},h("i",{class:"dot",style:"background:var(--before)"}),"Before (dashed)"),h("span",{},h("i",{class:"dot",style:"background:var(--after)"}),"After")),
+      h("div",{class:"row sm",style:"margin:8px 0"},
+        h("span",{class:"pill"},"Avg before "+f1(avg(list.map(x=>x.before)))),
+        h("span",{class:"pill"},"Avg after "+f1(avg(list.map(x=>x.after)))),
+        h("span",{class:"pill"},"Prediction gap "+f1(avg(list.map(x=>x.predicted-x.after)))),
+        h("span",{class:"pill"},"Held the line "+held+"/"+list.length)),
+      h("div",{class:"box"},insight(list))));
+  });
+  return root;
+}
+
+/* ---------- HISTORY ---------- */
+function viewHistory(){
+  const root = h("div");
+  const list = done().reverse();
+  if (!list.length) return h("div",{class:"card"},"Nothing logged yet.");
+  list.forEach(x=>{
+    const p = pById(x.problem) || {emoji:"•",name:"(deleted)"};
+    root.append(h("div",{class:"card"},h("div",{class:"hist"},
+      h("div",{class:"e"},p.emoji),
+      h("div",{class:"grow"},
+        h("div",{},h("b",{},p.name)," ",h("span",{class:"mut sm"},fmtDate(x.doneAt))),
+        h("div",{class:"sm"},"Before "+x.before+" · Predicted "+x.predicted+" · After "+x.after+" · Gap "+(x.predicted-x.after)+(x.held?" · Held: "+x.held:"")+(x.inWindow===false?" · outside window":"")),
+        x.trigger?h("div",{class:"mut sm"},"Trigger: "+x.trigger):null,
+        x.note?h("div",{class:"sm",style:"margin-top:4px"},x.note):null),
+      h("button",{class:"btn ghost sm",onclick:()=>{ if(confirmId===x.id){state.sessions=state.sessions.filter(y=>y.id!==x.id);confirmId=null;save();render();}else{confirmId=x.id;render();} }},confirmId===x.id?"Sure?":"✕"))));
+  });
+  return root;
+}
+
+/* ---------- PROBLEMS ---------- */
+function viewProblems(){
+  const root = h("div");
+  root.append(h("p",{class:"mut sm"},"Edit the old belief and the new action for each problem, or add your own."));
+  state.problems.forEach(p=>{
+    const d = h("details",{}, h("summary",{},p.emoji+" "+p.name));
+    d.append(h("div",{},
+      h("label",{class:"l"},"Name"), h("input",{type:"text",value:p.name,oninput:e=>{p.name=e.target.value;save();}}),
+      h("label",{class:"l"},"Emoji"), h("input",{type:"text",value:p.emoji,oninput:e=>{p.emoji=e.target.value;save();}}),
+      h("label",{class:"l"},"Old prediction (what your brain expects)"), h("textarea",{oninput:e=>{p.old=e.target.value;save();},value:p.old}),
+      h("label",{class:"l"},"New experience to try"), h("textarea",{oninput:e=>{p.action=e.target.value;save();},value:p.action}),
+      h("div",{style:"margin-top:10px"},h("button",{class:"btn danger sm",onclick:()=>{
+        if (confirmId==="p"+p.id){ state.problems=state.problems.filter(x=>x.id!==p.id); if(draft.problem===p.id)draft.problem=null; confirmId=null; save(); render(); }
+        else { confirmId="p"+p.id; render(); } }}, confirmId==="p"+p.id?"Really delete? (rounds are kept)":"Delete problem"))));
+    root.append(d);
+  });
+  root.append(h("button",{class:"btn",onclick:()=>{ state.problems.push({id:uid(),name:"New problem",emoji:"⭐",old:"",action:""}); save(); render(); }},"+ Add problem"));
+  return root;
+}
+
+/* ---------- GUIDE ---------- */
+function viewGuide(){
+  return h("div",{},
+    h("div",{class:"card"},h("h2",{},"How a round works"),
+      h("ol",{},
+        h("li",{},h("b",{},"Reactivate: "),"bring up the old reaction on purpose (the craving, the dread, the trigger) and rate it."),
+        h("li",{},h("b",{},"Predict: "),"write down how bad you expect the new action to be."),
+        h("li",{},h("b",{},"Mismatch: "),"within about 5 hours, do the new action and see what really happens."),
+        h("li",{},h("b",{},"Rate after: "),"the gap between prediction and result is the learning."),
+        h("li",{},h("b",{},"Repeat: "),"the real sign of change is your BEFORE rating getting lower over weeks."))),
+    h("div",{class:"card"},h("h2",{},"Be realistic"),
+      h("p",{class:"mut"},"The 5-hour reconsolidation window comes mostly from animal and fear-memory studies, and human results are mixed. Treat this as a structured way to practise exposure and new learning, not a one-time permanent reset."),
+      h("p",{class:"mut"},"For smoking, add nicotine replacement or a doctor's help. For deep relationship hurt or trauma, work with a therapist.")));
+}
+
+/* ---------- shell ---------- */
+const TABS = [["today","📝","Today"],["progress","📈","Progress"],["history","🗂️","History"],["problems","🎯","Problems"],["guide","📖","Guide"]];
+function render(){
+  const nav = document.getElementById("nav"); nav.replaceChildren();
+  TABS.forEach(([k,i,t])=>nav.append(h("button",{class:tab===k?"on":"",onclick:()=>{tab=k;confirmId=null;render();window.scrollTo(0,0);}},h("i",{},i),t)));
+  const v = document.getElementById("view"); v.replaceChildren(
+    tab==="today"?viewToday(): tab==="progress"?viewProgress(): tab==="history"?viewHistory(): tab==="problems"?viewProblems(): viewGuide());
+}
+setInterval(()=>{
+  document.querySelectorAll(".cd").forEach(el=>{
+    const left = WINDOW_MS-(Date.now()-(+el.dataset.start));
+    el.textContent = fmtLeft(left); el.className = "pill cd "+(left>0?"warn":"mut");
+  });
+}, 30000);
+initStore();
+</script>
+</body>
+</html>
